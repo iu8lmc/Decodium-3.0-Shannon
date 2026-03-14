@@ -334,7 +334,7 @@ if (WIN32)
     killbyname.cpp
     )
 
-  if (AXSERVERSRCS)
+  if (ENABLE_OMNIRIG)
     set (wsjt_qt_CXXSRCS
       ${wsjt_qt_CXXSRCS}
       Transceiver/OmniRigTransceiver.cpp
@@ -929,27 +929,13 @@ set_source_files_properties (lib/filbig.f90 PROPERTIES COMPILE_FLAGS "-Wno-alias
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -include decodium_config.h")
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/decodium_config.h)
 
-option (ENABLE_OMNIRIG "Enable OmniRig support (requires dumpcpp and OmniRig)" ON)
+option (ENABLE_OMNIRIG "Enable OmniRig support" ON)
 if (WIN32 AND ENABLE_OMNIRIG)
-  # generate the OmniRig COM interface source
-  find_program (DUMPCPP dumpcpp)
-  if (DUMPCPP)
-    execute_process (
-      COMMAND ${DUMPCPP} -getfile {4FE359C5-A58F-459D-BE95-CA559FB4F270}
-      OUTPUT_VARIABLE AXSERVER
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-    string (STRIP "${AXSERVER}" AXSERVER)
-    if (NOT AXSERVER)
-      message (WARNING "OmniRig not installed - OmniRig support disabled")
-    else ()
-      string (REPLACE "\"" "" AXSERVER ${AXSERVER})
-      file (TO_CMAKE_PATH ${AXSERVER} AXSERVERSRCS)
-      add_compile_definitions (HAVE_OMNIRIG)
-    endif ()
-  else ()
-    message (WARNING "dumpcpp not found - OmniRig support disabled")
-  endif ()
+  # Always use pre-generated OmniRig.h/.cpp from Transceiver/ directory
+  # (dumpcpp crashes on Qt 5.15.15+ with modern OmniRig metaobject)
+  set (OMNIRIG_PREGENERATED TRUE)
+  add_compile_definitions (HAVE_OMNIRIG)
+  message (STATUS "OmniRig support enabled (pre-generated files)")
 endif ()
 
 
@@ -1519,6 +1505,9 @@ qt5_add_resources (decodium_RESOURCES_RCC
 if (WIN32 AND AXSERVERSRCS)
   include (QtAxMacros)
   wrap_ax_server (GENAXSRCS ${AXSERVERSRCS})
+elseif (WIN32 AND OMNIRIG_PREGENERATED)
+  # Use pre-generated OmniRig.h/.cpp from Transceiver/ directory
+  set (GENAXSRCS ${CMAKE_SOURCE_DIR}/Transceiver/OmniRig.cpp)
 endif ()
 
 #
@@ -1534,6 +1523,7 @@ target_link_libraries (qcp Qt5::Widgets Qt5::PrintSupport)
 add_library (wsjt_qt STATIC ${wsjt_qt_CXXSRCS} ${wsjt_qt_GENUISRCS} ${GENAXSRCS})
 # set decodium_udp exports to static variants
 target_compile_definitions (wsjt_qt PUBLIC UDP_STATIC_DEFINE)
+target_include_directories (wsjt_qt PRIVATE ${CMAKE_SOURCE_DIR}/Transceiver)
 target_link_libraries (wsjt_qt Hamlib::Hamlib Boost::log qcp Qt5::Widgets Qt5::Network Qt5::Sql Qt5::WebSockets)
 if (WIN32)
   target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
